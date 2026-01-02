@@ -11,6 +11,10 @@ interface SidebarProps {
   onDuplicateDecal: (id: string) => void;
 }
 
+const COLOR_PRESETS = [
+  '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899', '#ffffff', '#000000', '#71717a'
+];
+
 export const Sidebar: React.FC<SidebarProps> = ({ 
   state, setState, onAssetChange, onRemoveDecal, onUpdateDecal, onDuplicateDecal
 }) => {
@@ -69,11 +73,40 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       </button>
                     </div>
                   ) : (
-                    <input 
-                      value={selectedDecal.content}
-                      onChange={(e) => onUpdateDecal(selectedDecal.id, { content: e.target.value })}
-                      className="w-full bg-[#161618] border border-[#222] rounded-md px-3 py-2 text-sm text-zinc-100 outline-none focus:border-primary transition-colors font-mono"
-                    />
+                    <div className="space-y-3">
+                      <input 
+                        value={selectedDecal.content}
+                        onChange={(e) => onUpdateDecal(selectedDecal.id, { content: e.target.value })}
+                        className="w-full bg-[#161618] border border-[#222] rounded-md px-3 py-2 text-sm text-zinc-100 outline-none focus:border-primary transition-colors font-mono"
+                        placeholder="Enter text..."
+                      />
+                      
+                      <div className="space-y-2 pt-2">
+                        <label className="text-[9px] font-bold text-zinc-600 uppercase tracking-[0.2em] block">Appearance</label>
+                        <div className="grid grid-cols-5 gap-2">
+                          {COLOR_PRESETS.map(color => (
+                            <button
+                              key={color}
+                              onClick={() => onUpdateDecal(selectedDecal.id, { color })}
+                              className={`size-6 rounded-full border-2 transition-transform hover:scale-110 ${selectedDecal.color === color ? 'border-white' : 'border-transparent'}`}
+                              style={{ backgroundColor: color }}
+                            />
+                          ))}
+                          <div className="relative size-6">
+                            <input 
+                              type="color" 
+                              value={selectedDecal.color || '#3b82f6'}
+                              onChange={(e) => onUpdateDecal(selectedDecal.id, { color: e.target.value })}
+                              className="absolute inset-0 size-full opacity-0 cursor-pointer"
+                            />
+                            <div 
+                              className="size-full rounded-full border-2 border-white/20 bg-gradient-to-tr from-red-500 via-green-500 to-blue-500"
+                              title="Custom Color"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
 
@@ -109,7 +142,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
 
                 <div className="pt-4 border-t border-[#222] space-y-4">
-                   <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest block">Material</label>
+                   <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest block">Visibility & Mirror</label>
                    
                    <div className="space-y-2">
                       <div className="flex justify-between text-[10px] font-bold text-zinc-500 uppercase">
@@ -123,6 +156,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         className="w-full accent-primary"
                       />
                    </div>
+
+                   <button 
+                    onClick={() => onUpdateDecal(selectedDecal.id, { mirror: !selectedDecal.mirror })}
+                    className={`w-full py-2 rounded-lg text-[10px] font-bold uppercase border transition-all flex items-center justify-center gap-2 ${selectedDecal.mirror ? 'bg-primary/20 border-primary text-primary' : 'bg-[#0c0c0e] border-[#222] text-zinc-500'}`}
+                   >
+                     <span className="material-symbols-outlined text-sm">content_copy</span>
+                     Symmetry Mirror {selectedDecal.mirror ? 'ON' : 'OFF'}
+                   </button>
                 </div>
               </div>
             </div>

@@ -109,7 +109,7 @@ const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const assetChangeInputRef = useRef<HTMLInputElement>(null);
-  const sceneRef = useRef<THREE.Group | null>(null);
+  const containerRef = useRef<THREE.Group | null>(null);
 
   const saveHistory = (newDecals: DecalData[], selectedId: string | null = state.selectedDecalId) => {
     setState(prev => {
@@ -224,15 +224,30 @@ const App: React.FC = () => {
   };
 
   const exportModel = () => {
-    if (!sceneRef.current) return;
+    if (!containerRef.current) {
+        alert("Model container not ready. Please try again in a moment.");
+        return;
+    }
+    
+    // We export the entire container which has model + all decals
     const exporter = new GLTFExporter();
-    exporter.parse(sceneRef.current, (result) => {
+    exporter.parse(containerRef.current, (result) => {
       const blob = result instanceof ArrayBuffer ? new Blob([result], { type: 'application/octet-stream' }) : new Blob([JSON.stringify(result)], { type: 'text/plain' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = `studio3d_export_${Date.now()}.glb`;
+      link.download = `studio3d_design_${Date.now()}.glb`;
       link.click();
     }, (error) => console.error(error), { binary: true, embedImages: true });
+  };
+
+  const exportSnapshot = () => {
+    const canvas = document.querySelector('canvas');
+    if (canvas) {
+      const link = document.createElement('a');
+      link.href = canvas.toDataURL('image/png', 1.0);
+      link.download = `studio3d_snapshot_${Date.now()}.png`;
+      link.click();
+    }
   };
 
   const handleModelUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -281,7 +296,9 @@ const App: React.FC = () => {
         isReviewMode={state.isReviewMode} 
         toggleReview={() => setState(p => ({ ...p, isReviewMode: !p.isReviewMode }))}
         onUndo={undo} onRedo={redo} canUndo={state.historyIndex > 0} canRedo={state.historyIndex < state.history.length - 1}
-        onExport={exportModel} hasModel={!!state.modelUrl}
+        onExport={exportModel}
+        onExportImage={exportSnapshot}
+        hasModel={!!state.modelUrl}
         onReset={() => setState(INITIAL_STATE)}
         onToggleSidebar={toggleSidebar}
         isSidebarVisible={state.isSidebarVisible}
@@ -311,12 +328,15 @@ const App: React.FC = () => {
                 onToggleGrid={() => setState(p => ({ ...p, gridVisible: !p.gridVisible }))}
                 onToggleRotation={() => setState(p => ({ ...p, isRotating: !p.isRotating }))}
                 onToggleWireframe={toggleWireframe}
-                onSceneReady={(scene) => {
-                  sceneRef.current = scene;
-                  const box = new THREE.Box3().setFromObject(scene);
-                  const size = new THREE.Vector3();
-                  box.getSize(size);
-                  setState(p => ({ ...p, modelScale: Math.max(size.x, size.y, size.z), isLoading: false }));
+                onSceneReady={(group) => {
+                  containerRef.current = group;
+                  // Only update scale once for the base model sizing
+                  if (state.modelScale === 1) {
+                      const box = new THREE.Box3().setFromObject(group);
+                      const size = new THREE.Vector3();
+                      box.getSize(size);
+                      setState(p => ({ ...p, modelScale: Math.max(size.x, size.y, size.z) || 1 }));
+                  }
                 }}
               />
             </div>

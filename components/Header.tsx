@@ -9,6 +9,7 @@ interface HeaderProps {
   canUndo: boolean;
   canRedo: boolean;
   onExport: () => void;
+  onExportImage: () => void;
   onReset: () => void;
   hasModel: boolean;
   onToggleSidebar: () => void;
@@ -16,7 +17,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ 
-  isReviewMode, toggleReview, onUndo, onRedo, canUndo, canRedo, onExport, onReset, hasModel, onToggleSidebar, isSidebarVisible
+  isReviewMode, toggleReview, onUndo, onRedo, canUndo, canRedo, onExport, onExportImage, onReset, hasModel, onToggleSidebar, isSidebarVisible
 }) => {
   return (
     <header className="h-14 flex items-center justify-between px-3 sm:px-6 bg-[#0c0c0e] border-b border-[#222] z-[60] relative">
@@ -72,12 +73,21 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             <button 
+              onClick={onExportImage}
+              className="px-3 sm:px-4 py-1.5 bg-[#161618] hover:bg-[#1f1f22] text-zinc-300 border border-[#222] rounded-md text-[11px] font-bold uppercase tracking-wider transition-all h-[34px] flex items-center"
+              title="Download Snapshot"
+            >
+              <span className="material-symbols-outlined text-lg sm:mr-2">photo_camera</span>
+              <span className="hidden sm:inline">Snapshot</span>
+            </button>
+
+            <button 
               onClick={onExport}
               className="px-3 sm:px-5 py-1.5 bg-zinc-100 hover:bg-white text-black rounded-md text-[11px] font-bold uppercase tracking-wider transition-all shadow-lg active:scale-95 h-[34px] flex items-center"
-              title="Export GLB"
+              title="Export GLB with Modifications"
             >
               <span className="material-symbols-outlined text-lg sm:hidden">download</span>
-              <span className="hidden sm:inline">Export</span>
+              <span className="hidden sm:inline">Export GLB</span>
             </button>
 
             {!isReviewMode && (

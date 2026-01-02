@@ -1,7 +1,7 @@
 
 import React, { Suspense, useMemo, useState, useEffect, useRef } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
-import { OrbitControls, useGLTF, Decal, Environment, ContactShadows, Grid } from '@react-three/drei';
+import { OrbitControls, useGLTF, Decal, Environment, ContactShadows, Grid, PivotControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { DecalData, ToolMode } from '../types';
 
@@ -15,7 +15,7 @@ interface ViewportProps {
   toolMode: ToolMode;
   onSetToolMode: (mode: ToolMode) => void;
   onAssetUpload: () => void;
-  onSceneReady?: (scene: THREE.Group) => void;
+  onSceneReady?: (group: THREE.Group) => void;
   isReviewMode: boolean;
   environment: 'studio' | 'sunset' | 'warehouse';
   gridVisible: boolean;
@@ -70,7 +70,8 @@ const DecalItem: React.FC<{
   onDragStart: (e: any) => void;
   toolMode: ToolMode;
   isReviewMode: boolean;
-}> = ({ decal, isSelected, onSelect, scene, isMirror, onDragStart, toolMode, isReviewMode }) => {
+  onUpdate: (id: string, updates: Partial<DecalData>) => void;
+}> = ({ decal, isSelected, onSelect, scene, isMirror, onDragStart, toolMode, isReviewMode, onUpdate }) => {
   const [texture, setTexture] = useState<THREE.Texture | null>(null);
 
   const targetMesh = useMemo(() => {
@@ -125,7 +126,7 @@ const DecalItem: React.FC<{
         if (!isMounted) return;
 
         ctx.fillStyle = decal.color || '#3b82f6';
-        ctx.font = '900 180px sans-serif'; // Fallback immediately, then replace if possible
+        ctx.font = '900 180px sans-serif'; 
         if (document.fonts.check('900 180px "Plus Jakarta Sans"')) {
           ctx.font = '900 180px "Plus Jakarta Sans"';
         }
@@ -156,54 +157,77 @@ const DecalItem: React.FC<{
 
   if (!targetMesh || !texture || !decal.visible) return null;
 
-  const depth = Math.max(decal.scale[0], decal.scale[1]) * 4;
+  // Reduce depth to prevent projecting through thin models to the back side
+  const depth = decal.scale[0] * 0.25; 
   const finalPos = isMirror ? [ -decal.position[0], decal.position[1], decal.position[2] ] : decal.position;
   const finalRot = isMirror ? [ decal.rotation[0], -decal.rotation[1], -decal.rotation[2] ] : decal.rotation;
 
-  return (
-    <group>
-      {/* Fix: Wrap targetMesh in a RefObject-like structure to satisfy the 'mesh' prop requirements. */}
-      <Decal
-        mesh={{ current: targetMesh } as any}
-        position={finalPos as any}
-        rotation={finalRot as any}
-        scale={[decal.scale[0], decal.scale[1], depth]} 
-        onClick={(e) => {
-          e.stopPropagation();
-          onSelect(decal.id);
-        }}
-        onPointerDown={(e) => {
-          if (toolMode === ToolMode.SELECT && isSelected && !isMirror && !isReviewMode) {
-             e.stopPropagation();
-             onDragStart(e);
-          }
-        }}
-      >
-        <meshStandardMaterial
-          map={texture}
-          transparent={true}
-          opacity={decal.opacity ?? 1}
-          roughness={decal.roughness ?? 0.5}
-          metalness={decal.metalness ?? 0}
-          alphaTest={0.01}
-          polygonOffset={true}
-          polygonOffsetFactor={-15} 
-          polygonOffsetUnits={-1}
-          depthWrite={true}
-          side={THREE.DoubleSide}
-        />
-      </Decal>
-      
-      {isSelected && !isMirror && (
-        <group position={decal.position} rotation={decal.rotation}>
-          <mesh>
-             <boxGeometry args={[decal.scale[0] * 1.1, decal.scale[1] * 1.1, 0.02]} />
-             <meshBasicMaterial color="#3b82f6" wireframe transparent opacity={0.3} />
-          </mesh>
-        </group>
-      )}
-    </group>
+  const decalElement = (
+    <Decal
+      mesh={{ current: targetMesh } as any}
+      position={finalPos as any}
+      rotation={finalRot as any}
+      scale={[decal.scale[0], decal.scale[1], depth]} 
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect(decal.id);
+      }}
+      onPointerDown={(e) => {
+        if (toolMode === ToolMode.SELECT && isSelected && !isMirror && !isReviewMode) {
+           e.stopPropagation();
+           onDragStart(e);
+        }
+      }}
+    >
+      <meshStandardMaterial
+        map={texture}
+        transparent={true}
+        opacity={decal.opacity ?? 1}
+        roughness={decal.roughness ?? 0.5}
+        metalness={decal.metalness ?? 0}
+        alphaTest={0.01}
+        polygonOffset={true}
+        polygonOffsetFactor={-15} 
+        polygonOffsetUnits={-1}
+        depthWrite={true}
+        side={THREE.FrontSide} // Ensure it only renders on one side
+      />
+    </Decal>
   );
+
+  if (isSelected && !isMirror && !isReviewMode) {
+    return (
+      <group>
+        <PivotControls
+          activeAxes={[true, true, false]}
+          disableRotations={false}
+          disableAxes={false}
+          disableSliders={true}
+          scale={decal.scale[0] * 2}
+          lineWidth={2}
+          fixed={false}
+          onDrag={(l, deltaL, w, deltaW) => {
+            // PivotControls updates matrix. We extract transformation.
+            const position = new THREE.Vector3();
+            const quaternion = new THREE.Quaternion();
+            const scale = new THREE.Vector3();
+            w.decompose(position, quaternion, scale);
+            
+            // To maintain surface alignment, we only really want to support scale and local rotation from here
+            // but for simplicity we can allow direct scale updates
+            const newScale = Math.max(scale.x, scale.y);
+            if (Math.abs(newScale - decal.scale[0]) > 0.001) {
+                onUpdate(decal.id, { scale: [newScale, newScale, newScale] });
+            }
+          }}
+        >
+          {decalElement}
+        </PivotControls>
+      </group>
+    );
+  }
+
+  return decalElement;
 };
 
 export const Viewport: React.FC<ViewportProps> = ({ 
@@ -213,6 +237,7 @@ export const Viewport: React.FC<ViewportProps> = ({
   const [loadedScene, setLoadedScene] = useState<THREE.Group | null>(null);
   const [resetKey, setResetKey] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const containerRef = useRef<THREE.Group>(null);
   const controlsRef = useRef<any>(null);
   const { scene: modelGroup } = useGLTF(modelUrl || '');
 
@@ -237,9 +262,15 @@ export const Viewport: React.FC<ViewportProps> = ({
         }
       });
       setLoadedScene(modelGroup);
-      if (onSceneReady) onSceneReady(modelGroup);
     }
-  }, [modelGroup, onSceneReady, wireframeMode]);
+  }, [modelGroup, wireframeMode]);
+
+  // Notify parent of the full design container for export
+  useEffect(() => {
+    if (containerRef.current && onSceneReady) {
+      onSceneReady(containerRef.current);
+    }
+  }, [loadedScene, decals, onSceneReady]);
 
   const updatePosition = (e: any) => {
     if (!selectedId || !e.face || !e.object || isReviewMode) return;
@@ -294,6 +325,7 @@ export const Viewport: React.FC<ViewportProps> = ({
           />
 
           <group 
+            ref={containerRef}
             onClick={(e) => {
               if (toolMode === ToolMode.SELECT || isReviewMode) return;
               e.stopPropagation();
@@ -326,6 +358,7 @@ export const Viewport: React.FC<ViewportProps> = ({
                     onDragStart={() => setIsDragging(true)}
                     toolMode={toolMode}
                     isReviewMode={isReviewMode}
+                    onUpdate={onUpdateDecal}
                 />
                 {decal.mirror && (
                     <DecalItem 
@@ -337,6 +370,7 @@ export const Viewport: React.FC<ViewportProps> = ({
                         onDragStart={() => {}}
                         toolMode={toolMode}
                         isReviewMode={isReviewMode}
+                        onUpdate={onUpdateDecal}
                     />
                 )}
               </React.Fragment>
