@@ -1,0 +1,7 @@
+{
+  "name": "Studio3D: Precision Modeler",
+  "description": "A high-end 3D model editor that allows users to upload models and apply precision decals, logos, and typography directly onto surfaces using projective geometry.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
