@@ -1,6 +1,6 @@
 
 import React, { Suspense, useMemo, useState, useEffect, useRef } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls, useGLTF, Decal, Environment, ContactShadows, Grid, PivotControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { DecalData, ToolMode } from '../types';
@@ -17,6 +17,7 @@ interface ViewportProps {
   onAssetUpload: () => void;
   onSceneReady?: (group: THREE.Group) => void;
   isReviewMode: boolean;
+  isCapturing?: boolean;
   environment: 'studio' | 'sunset' | 'warehouse';
   gridVisible: boolean;
   isRotating: boolean;
@@ -70,9 +71,18 @@ const DecalItem: React.FC<{
   onDragStart: (e: any) => void;
   toolMode: ToolMode;
   isReviewMode: boolean;
+  isCapturing?: boolean;
   onUpdate: (id: string, updates: Partial<DecalData>) => void;
-}> = ({ decal, isSelected, onSelect, scene, isMirror, onDragStart, toolMode, isReviewMode, onUpdate }) => {
+}> = ({ decal, isSelected, onSelect, scene, isMirror, onDragStart, toolMode, isReviewMode, isCapturing, onUpdate }) => {
   const [texture, setTexture] = useState<THREE.Texture | null>(null);
+  const borderMaterialRef = useRef<THREE.MeshBasicMaterial>(null);
+
+  // Pulsing animation for selection border
+  useFrame(({ clock }) => {
+    if (borderMaterialRef.current) {
+      borderMaterialRef.current.opacity = 0.5 + Math.sin(clock.elapsedTime * 8) * 0.3;
+    }
+  });
 
   const targetMesh = useMemo(() => {
     let found: THREE.Mesh | null = null;
@@ -86,6 +96,45 @@ const DecalItem: React.FC<{
     }
     return found;
   }, [scene, decal.meshName]);
+
+  // High-visibility selection border texture generator
+  const selectionTexture = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 1024;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      // Background outline (glow-ish)
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 40;
+      ctx.strokeRect(20, 20, 984, 984);
+
+      // Primary dotted line
+      ctx.strokeStyle = '#3b82f6';
+      ctx.lineWidth = 30;
+      ctx.setLineDash([80, 40]);
+      ctx.strokeRect(20, 20, 984, 984);
+      
+      // Thick corner markers for "resize handle" feel
+      ctx.fillStyle = '#3b82f6';
+      const markerSize = 120;
+      // Top Left
+      ctx.fillRect(0, 0, markerSize, 30);
+      ctx.fillRect(0, 0, 30, markerSize);
+      // Top Right
+      ctx.fillRect(1024 - markerSize, 0, markerSize, 30);
+      ctx.fillRect(1024 - 30, 0, 30, markerSize);
+      // Bottom Left
+      ctx.fillRect(0, 1024 - 30, markerSize, 30);
+      ctx.fillRect(0, 1024 - markerSize, 30, markerSize);
+      // Bottom Right
+      ctx.fillRect(1024 - markerSize, 1024 - 30, markerSize, 30);
+      ctx.fillRect(1024 - 30, 1024 - markerSize, 30, markerSize);
+    }
+    const t = new THREE.CanvasTexture(canvas);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -157,7 +206,6 @@ const DecalItem: React.FC<{
 
   if (!targetMesh || !texture || !decal.visible) return null;
 
-  // Reduce depth to prevent projecting through thin models to the back side
   const depth = decal.scale[0] * 0.25; 
   const finalPos = isMirror ? [ -decal.position[0], decal.position[1], decal.position[2] ] : decal.position;
   const finalRot = isMirror ? [ decal.rotation[0], -decal.rotation[1], -decal.rotation[2] ] : decal.rotation;
@@ -169,11 +217,12 @@ const DecalItem: React.FC<{
       rotation={finalRot as any}
       scale={[decal.scale[0], decal.scale[1], depth]} 
       onClick={(e) => {
+        if (isReviewMode || isCapturing) return;
         e.stopPropagation();
         onSelect(decal.id);
       }}
       onPointerDown={(e) => {
-        if (toolMode === ToolMode.SELECT && isSelected && !isMirror && !isReviewMode) {
+        if (toolMode === ToolMode.SELECT && isSelected && !isMirror && !isReviewMode && !isCapturing) {
            e.stopPropagation();
            onDragStart(e);
         }
@@ -190,48 +239,75 @@ const DecalItem: React.FC<{
         polygonOffsetFactor={-15} 
         polygonOffsetUnits={-1}
         depthWrite={true}
-        side={THREE.FrontSide} // Ensure it only renders on one side
+        side={THREE.FrontSide}
       />
     </Decal>
   );
 
-  if (isSelected && !isMirror && !isReviewMode) {
+  const selectionBorder = isSelected && !isMirror && !isReviewMode && !isCapturing && (
+    <Decal
+      mesh={{ current: targetMesh } as any}
+      position={finalPos as any}
+      rotation={finalRot as any}
+      // Slightly larger than the actual decal so the border is visible around it
+      scale={[decal.scale[0] * 1.04, decal.scale[1] * 1.04, depth * 1.01]}
+    >
+      <meshBasicMaterial
+        ref={borderMaterialRef}
+        map={selectionTexture}
+        transparent={true}
+        opacity={0.8}
+        polygonOffset={true}
+        polygonOffsetFactor={-30} // Significant offset to ensure it stays on top of the decal
+        polygonOffsetUnits={-1}
+        depthWrite={false}
+        side={THREE.FrontSide}
+      />
+    </Decal>
+  );
+
+  // Refined resizing UI: PivotControls configured to be minimal and corner-focused
+  if (isSelected && !isMirror && !isReviewMode && !isCapturing) {
     return (
       <group>
         <PivotControls
-          activeAxes={[true, true, false]}
-          disableRotations={false}
-          disableAxes={false}
-          disableSliders={true}
-          scale={decal.scale[0] * 2}
-          lineWidth={2}
-          fixed={false}
+          activeAxes={[false, false, false]} 
+          disableRotations={true}           
+          disableAxes={true}               
+          disableSliders={false}           
+          scale={decal.scale[0] * 1.2}     
+          lineWidth={2}                  
+          fixed={false}                    
+          depthTest={false}                
+          anchor={[0, 0, 0]}               
           onDrag={(l, deltaL, w, deltaW) => {
-            // PivotControls updates matrix. We extract transformation.
             const position = new THREE.Vector3();
             const quaternion = new THREE.Quaternion();
             const scale = new THREE.Vector3();
             w.decompose(position, quaternion, scale);
-            
-            // To maintain surface alignment, we only really want to support scale and local rotation from here
-            // but for simplicity we can allow direct scale updates
             const newScale = Math.max(scale.x, scale.y);
             if (Math.abs(newScale - decal.scale[0]) > 0.001) {
                 onUpdate(decal.id, { scale: [newScale, newScale, newScale] });
             }
           }}
         >
+          {selectionBorder}
           {decalElement}
         </PivotControls>
       </group>
     );
   }
 
-  return decalElement;
+  return (
+    <>
+      {selectionBorder}
+      {decalElement}
+    </>
+  );
 };
 
 export const Viewport: React.FC<ViewportProps> = ({ 
-  modelUrl, decals, selectedId, onModelClick, onSelectDecal, onUpdateDecal, toolMode, onSetToolMode, onAssetUpload, onSceneReady, isReviewMode, environment,
+  modelUrl, decals, selectedId, onModelClick, onSelectDecal, onUpdateDecal, toolMode, onSetToolMode, onAssetUpload, onSceneReady, isReviewMode, isCapturing, environment,
   gridVisible, isRotating, wireframeMode, onToggleGrid, onToggleRotation, onToggleWireframe
 }) => {
   const [loadedScene, setLoadedScene] = useState<THREE.Group | null>(null);
@@ -265,7 +341,6 @@ export const Viewport: React.FC<ViewportProps> = ({
     }
   }, [modelGroup, wireframeMode]);
 
-  // Notify parent of the full design container for export
   useEffect(() => {
     if (containerRef.current && onSceneReady) {
       onSceneReady(containerRef.current);
@@ -273,7 +348,7 @@ export const Viewport: React.FC<ViewportProps> = ({
   }, [loadedScene, decals, onSceneReady]);
 
   const updatePosition = (e: any) => {
-    if (!selectedId || !e.face || !e.object || isReviewMode) return;
+    if (!selectedId || !e.face || !e.object || isReviewMode || isCapturing) return;
     const mesh = e.object as THREE.Mesh;
     mesh.updateMatrixWorld();
     const localPoint = mesh.worldToLocal(e.point.clone());
@@ -311,7 +386,7 @@ export const Viewport: React.FC<ViewportProps> = ({
         shadows 
         dpr={[1, 2]} 
         gl={{ antialias: true, preserveDrawingBuffer: true, alpha: true, powerPreference: "high-performance" }} 
-        onPointerMissed={() => !isReviewMode && onSelectDecal('')}
+        onPointerMissed={() => !isReviewMode && !isCapturing && onSelectDecal('')}
         camera={{ fov: 45, near: 0.1, far: 10000 }}
       >
         <Suspense fallback={null}>
@@ -327,7 +402,7 @@ export const Viewport: React.FC<ViewportProps> = ({
           <group 
             ref={containerRef}
             onClick={(e) => {
-              if (toolMode === ToolMode.SELECT || isReviewMode) return;
+              if (toolMode === ToolMode.SELECT || isReviewMode || isCapturing) return;
               e.stopPropagation();
               const mesh = e.object as THREE.Mesh;
               mesh.updateMatrixWorld();
@@ -340,7 +415,7 @@ export const Viewport: React.FC<ViewportProps> = ({
               onModelClick([localPoint.x, localPoint.y, localPoint.z], [helper.rotation.x, helper.rotation.y, helper.rotation.z], mesh);
             }}
             onPointerMove={(e) => { 
-                if (isDragging && selectedId && !isReviewMode) {
+                if (isDragging && selectedId && !isReviewMode && !isCapturing) {
                     updatePosition(e);
                 }
             }}
@@ -352,12 +427,13 @@ export const Viewport: React.FC<ViewportProps> = ({
               <React.Fragment key={decal.id}>
                 <DecalItem 
                     decal={decal} 
-                    isSelected={decal.id === selectedId && !isReviewMode} 
+                    isSelected={decal.id === selectedId && !isReviewMode && !isCapturing} 
                     onSelect={onSelectDecal} 
                     scene={loadedScene} 
                     onDragStart={() => setIsDragging(true)}
                     toolMode={toolMode}
                     isReviewMode={isReviewMode}
+                    isCapturing={isCapturing}
                     onUpdate={onUpdateDecal}
                 />
                 {decal.mirror && (
@@ -370,6 +446,7 @@ export const Viewport: React.FC<ViewportProps> = ({
                         onDragStart={() => {}}
                         toolMode={toolMode}
                         isReviewMode={isReviewMode}
+                        isCapturing={isCapturing}
                         onUpdate={onUpdateDecal}
                     />
                 )}
@@ -378,7 +455,7 @@ export const Viewport: React.FC<ViewportProps> = ({
           </group>
           <ContactShadows position={[0, -0.01, 0]} opacity={0.6} scale={40} blur={2.5} far={10} />
           
-          {gridVisible && (
+          {gridVisible && !isCapturing && (
             <Grid 
               sectionSize={1} 
               sectionThickness={1} 
@@ -405,7 +482,7 @@ export const Viewport: React.FC<ViewportProps> = ({
         </Suspense>
       </Canvas>
 
-      {!isReviewMode && (
+      {!isReviewMode && !isCapturing && (
         <>
           <div className="absolute top-4 sm:top-1/2 sm:-translate-y-1/2 left-3 sm:left-8 flex flex-row sm:flex-col gap-2 sm:gap-4 p-2 sm:p-3 bg-[#0a0a0c]/85 backdrop-blur-3xl rounded-full sm:rounded-[2rem] border border-white/5 shadow-2xl z-50 pointer-events-auto transition-all">
             <button

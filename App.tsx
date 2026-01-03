@@ -98,6 +98,7 @@ const INITIAL_STATE: AppState = {
   isReviewMode: false,
   modelScale: 1,
   isLoading: false,
+  isCapturing: false,
   environment: 'studio',
   gridVisible: true,
   isRotating: false,
@@ -229,7 +230,6 @@ const App: React.FC = () => {
         return;
     }
     
-    // We export the entire container which has model + all decals
     const exporter = new GLTFExporter();
     exporter.parse(containerRef.current, (result) => {
       const blob = result instanceof ArrayBuffer ? new Blob([result], { type: 'application/octet-stream' }) : new Blob([JSON.stringify(result)], { type: 'text/plain' });
@@ -241,13 +241,21 @@ const App: React.FC = () => {
   };
 
   const exportSnapshot = () => {
-    const canvas = document.querySelector('canvas');
-    if (canvas) {
-      const link = document.createElement('a');
-      link.href = canvas.toDataURL('image/png', 1.0);
-      link.download = `studio3d_snapshot_${Date.now()}.png`;
-      link.click();
-    }
+    // 1. Enter capture mode to hide grids and handles
+    setState(prev => ({ ...prev, isCapturing: true }));
+    
+    // 2. Allow a brief moment for the frame to render without UI
+    setTimeout(() => {
+      const canvas = document.querySelector('canvas');
+      if (canvas) {
+        const link = document.createElement('a');
+        link.href = canvas.toDataURL('image/png', 1.0);
+        link.download = `studio3d_snapshot_${Date.now()}.png`;
+        link.click();
+      }
+      // 3. Restore UI
+      setState(prev => ({ ...prev, isCapturing: false }));
+    }, 100);
   };
 
   const handleModelUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -321,6 +329,7 @@ const App: React.FC = () => {
                 onSelectDecal={(id) => !state.isReviewMode && setState(p => ({ ...p, selectedDecalId: id, toolMode: ToolMode.SELECT }))}
                 onUpdateDecal={updateDecal} 
                 isReviewMode={state.isReviewMode}
+                isCapturing={state.isCapturing}
                 environment={state.environment}
                 gridVisible={state.gridVisible}
                 isRotating={state.isRotating}
@@ -330,7 +339,6 @@ const App: React.FC = () => {
                 onToggleWireframe={toggleWireframe}
                 onSceneReady={(group) => {
                   containerRef.current = group;
-                  // Only update scale once for the base model sizing
                   if (state.modelScale === 1) {
                       const box = new THREE.Box3().setFromObject(group);
                       const size = new THREE.Vector3();
@@ -341,7 +349,7 @@ const App: React.FC = () => {
               />
             </div>
 
-            {!state.isReviewMode && (
+            {!state.isReviewMode && state.isSidebarVisible && !state.isCapturing && (
               <Sidebar 
                 state={state} 
                 setState={setState} 
@@ -430,7 +438,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {state.toolMode !== ToolMode.SELECT && state.modelUrl && !state.isReviewMode && (
+        {state.toolMode !== ToolMode.SELECT && state.modelUrl && !state.isReviewMode && !state.isCapturing && (
           <div className="absolute bottom-24 sm:bottom-28 left-1/2 -translate-x-1/2 flex items-center gap-3 px-6 sm:px-8 py-3 sm:py-4 bg-primary text-white rounded-full shadow-[0_20px_50px_rgba(59,130,246,0.5)] border border-white/20 text-[9px] sm:text-[12px] font-black uppercase tracking-[0.3em] pointer-events-none animate-in slide-in-from-bottom-4 duration-500 z-[100] whitespace-nowrap">
             <span className="material-symbols-outlined animate-bounce text-lg sm:text-xl">location_searching</span>
             Placement Ready

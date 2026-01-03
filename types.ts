@@ -37,6 +37,7 @@ export interface AppState {
   isReviewMode: boolean;
   modelScale: number;
   isLoading: boolean;
+  isCapturing: boolean;
   environment: 'studio' | 'sunset' | 'warehouse';
   gridVisible: boolean;
   isRotating: boolean;
