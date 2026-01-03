@@ -1,6 +1,7 @@
+
 import React, { Suspense, useMemo, useState, useEffect, useRef } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
-import { OrbitControls, useGLTF, Decal, Environment, ContactShadows, Grid, PivotControls, Edges } from '@react-three/drei';
+import { OrbitControls, useGLTF, Decal, Environment, ContactShadows, Grid, Edges } from '@react-three/drei';
 import * as THREE from 'three';
 import { DecalData, ToolMode } from '../types';
 
@@ -67,19 +68,16 @@ const DecalItem: React.FC<{
   onSelect: (id: string) => void;
   scene: THREE.Group;
   isMirror?: boolean;
-  onDragStart: (e: any) => void;
-  toolMode: ToolMode;
   isReviewMode: boolean;
   isCapturing?: boolean;
-  onUpdate: (id: string, updates: Partial<DecalData>) => void;
-}> = ({ decal, isSelected, onSelect, scene, isMirror, onDragStart, toolMode, isReviewMode, isCapturing, onUpdate }) => {
+}> = ({ decal, isSelected, onSelect, scene, isMirror, isReviewMode, isCapturing }) => {
   const [texture, setTexture] = useState<THREE.Texture | null>(null);
-  const borderMaterialRef = useRef<THREE.MeshBasicMaterial>(null);
+  const cageRef = useRef<THREE.Group>(null);
 
-  // Pulsing animation for selection border
   useFrame(({ clock }) => {
-    if (borderMaterialRef.current) {
-      borderMaterialRef.current.opacity = 0.4 + Math.sin(clock.elapsedTime * 8) * 0.2;
+    if (cageRef.current && isSelected) {
+      // Very subtle hover effect for the selection cage
+      cageRef.current.scale.setScalar(1 + Math.sin(clock.elapsedTime * 4) * 0.005);
     }
   });
 
@@ -96,45 +94,12 @@ const DecalItem: React.FC<{
     return found;
   }, [scene, decal.meshName]);
 
-  // Fix: Decal component from @react-three/drei expects a RefObject for its mesh prop.
-  // We wrap targetMesh in a ref-like object to satisfy the expected type.
   const targetMeshRef = useMemo(() => ({ current: targetMesh }), [targetMesh]);
-
-  // High-visibility selection border texture generator
-  const selectionTexture = useMemo(() => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 1024;
-    canvas.height = 1024;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 60;
-      ctx.strokeRect(40, 40, 944, 944);
-      ctx.strokeStyle = '#3b82f6';
-      ctx.lineWidth = 40;
-      ctx.setLineDash([80, 40]);
-      ctx.strokeRect(40, 40, 944, 944);
-      ctx.fillStyle = '#3b82f6';
-      const markerSize = 200;
-      ctx.fillRect(0, 0, markerSize, 40);
-      ctx.fillRect(0, 0, 40, markerSize);
-      ctx.fillRect(1024 - markerSize, 0, markerSize, 40);
-      ctx.fillRect(1024 - 40, 0, 40, markerSize);
-      ctx.fillRect(0, 1024 - 40, markerSize, 40);
-      ctx.fillRect(0, 1024 - markerSize, 40, markerSize);
-      ctx.fillRect(1024 - markerSize, 1024 - 40, markerSize, 40);
-      ctx.fillRect(1024 - 40, 1024 - markerSize, 40, markerSize);
-    }
-    const t = new THREE.CanvasTexture(canvas);
-    t.colorSpace = THREE.SRGBColorSpace;
-    return t;
-  }, []);
 
   useEffect(() => {
     let isMounted = true;
     const canvas = document.createElement('canvas');
-    canvas.width = 1024; 
-    canvas.height = 1024;
+    canvas.width = 1024; canvas.height = 1024;
     const ctx = canvas.getContext('2d', { alpha: true });
     if (!ctx) return;
 
@@ -144,38 +109,25 @@ const DecalItem: React.FC<{
         const img = new Image();
         img.crossOrigin = "anonymous";
         img.src = decal.content;
-        await new Promise((resolve) => {
-          img.onload = resolve;
-          img.onerror = resolve;
-        });
+        await new Promise((resolve) => { img.onload = resolve; img.onerror = resolve; });
         if (!isMounted) return;
-        if (isMirror) {
-          ctx.save();
-          ctx.translate(1024, 0);
-          ctx.scale(-1, 1);
-        }
+        if (isMirror) { ctx.save(); ctx.translate(1024, 0); ctx.scale(-1, 1); }
         ctx.drawImage(img, 0, 0, 1024, 1024);
         if (isMirror) ctx.restore();
       } else {
-        try {
-          await document.fonts.load('900 180px "Plus Jakarta Sans"');
-        } catch (e) {}
+        try { await document.fonts.load('900 180px "Plus Jakarta Sans"'); } catch (e) {}
         if (!isMounted) return;
         ctx.fillStyle = decal.color || '#3b82f6';
         ctx.font = '900 180px sans-serif'; 
         if (document.fonts.check('900 180px "Plus Jakarta Sans"')) ctx.font = '900 180px "Plus Jakarta Sans"';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        if (isMirror) {
-          ctx.save(); ctx.translate(512, 512); ctx.scale(-1, 1); ctx.translate(-512, -512);
-        }
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        if (isMirror) { ctx.save(); ctx.translate(512, 512); ctx.scale(-1, 1); ctx.translate(-512, -512); }
         ctx.fillText(decal.content, 512, 512);
         if (isMirror) ctx.restore();
       }
       const t = new THREE.CanvasTexture(canvas);
       t.colorSpace = THREE.SRGBColorSpace;
-      t.anisotropy = 16;
-      t.needsUpdate = true;
+      t.anisotropy = 16; t.needsUpdate = true;
       if (isMounted) setTexture(t);
     };
     render();
@@ -184,111 +136,59 @@ const DecalItem: React.FC<{
 
   if (!targetMesh || !texture || !decal.visible) return null;
 
-  const depth = decal.scale[0] * 0.8; 
+  const depth = decal.scale[0] * 0.4; 
   const finalPos = isMirror ? [ -decal.position[0], decal.position[1], decal.position[2] ] : decal.position;
   const finalRot = isMirror ? [ decal.rotation[0], -decal.rotation[1], -decal.rotation[2] ] : decal.rotation;
 
-  const decalElement = (
-    <Decal
-      mesh={targetMeshRef as any}
-      position={finalPos as any}
-      rotation={finalRot as any}
-      scale={[decal.scale[0], decal.scale[1], depth]} 
-      onClick={(e) => {
-        if (isReviewMode || isCapturing) return;
-        e.stopPropagation();
-        onSelect(decal.id);
-      }}
-    >
-      <meshStandardMaterial
-        map={texture}
-        transparent={true}
-        opacity={decal.opacity ?? 1}
-        roughness={decal.roughness ?? 0.5}
-        metalness={decal.metalness ?? 0}
-        alphaTest={0.01}
-        polygonOffset={true}
-        polygonOffsetFactor={-10} 
-        polygonOffsetUnits={-1}
-        depthWrite={true}
-        side={THREE.DoubleSide}
-      />
-    </Decal>
-  );
+  return (
+    <group>
+      {/* 3D Wireframe Selection Box (Cage) */}
+      {isSelected && !isMirror && !isReviewMode && !isCapturing && (
+        <group position={finalPos as any} rotation={finalRot as any} ref={cageRef}>
+          <mesh scale={[decal.scale[0], decal.scale[1], depth]}>
+            <boxGeometry />
+            <meshBasicMaterial transparent opacity={0} />
+            <Edges color="#3b82f6" lineWidth={2} />
+            {/* Corner caps for high-end look */}
+            <mesh position={[0.5, 0.5, 0.5]} scale={0.04}><boxGeometry /><meshBasicMaterial color="#3b82f6" /></mesh>
+            <mesh position={[-0.5, 0.5, 0.5]} scale={0.04}><boxGeometry /><meshBasicMaterial color="#3b82f6" /></mesh>
+            <mesh position={[0.5, -0.5, 0.5]} scale={0.04}><boxGeometry /><meshBasicMaterial color="#3b82f6" /></mesh>
+            <mesh position={[-0.5, -0.5, 0.5]} scale={0.04}><boxGeometry /><meshBasicMaterial color="#3b82f6" /></mesh>
+            <mesh position={[0.5, 0.5, -0.5]} scale={0.04}><boxGeometry /><meshBasicMaterial color="#3b82f6" /></mesh>
+            <mesh position={[-0.5, 0.5, -0.5]} scale={0.04}><boxGeometry /><meshBasicMaterial color="#3b82f6" /></mesh>
+            <mesh position={[0.5, -0.5, -0.5]} scale={0.04}><boxGeometry /><meshBasicMaterial color="#3b82f6" /></mesh>
+            <mesh position={[-0.5, -0.5, -0.5]} scale={0.04}><boxGeometry /><meshBasicMaterial color="#3b82f6" /></mesh>
+          </mesh>
+        </group>
+      )}
 
-  const selectionBorder = isSelected && !isMirror && !isReviewMode && !isCapturing && (
-    <>
-      {/* Decal based projection border */}
+      {/* The Actual Decal */}
       <Decal
         mesh={targetMeshRef as any}
         position={finalPos as any}
         rotation={finalRot as any}
-        scale={[decal.scale[0] * 1.1, decal.scale[1] * 1.1, depth * 1.05]}
+        scale={[decal.scale[0], decal.scale[1], depth]} 
+        onClick={(e) => {
+          if (isReviewMode || isCapturing) return;
+          e.stopPropagation();
+          onSelect(decal.id);
+        }}
       >
-        <meshBasicMaterial
-          ref={borderMaterialRef}
-          map={selectionTexture}
+        <meshStandardMaterial
+          map={texture}
           transparent={true}
-          opacity={0.8}
+          opacity={decal.opacity ?? 1}
+          roughness={decal.roughness ?? 0.5}
+          metalness={decal.metalness ?? 0}
+          alphaTest={0.01}
           polygonOffset={true}
-          polygonOffsetFactor={-40} 
+          polygonOffsetFactor={-10} 
           polygonOffsetUnits={-1}
-          depthWrite={false}
-          side={THREE.FrontSide}
+          depthWrite={true}
+          side={THREE.DoubleSide}
         />
       </Decal>
-      {/* 3D Box Wireframe for unmistakable selection visibility */}
-      <group position={finalPos as any} rotation={finalRot as any}>
-         <mesh scale={[decal.scale[0], decal.scale[1], 0.05]}>
-            <boxGeometry />
-            <meshBasicMaterial transparent opacity={0} />
-            <Edges color="#3b82f6" lineWidth={2} />
-         </mesh>
-      </group>
-    </>
-  );
-
-  if (isSelected && !isMirror && !isReviewMode && !isCapturing) {
-    return (
-      <group>
-        <PivotControls
-          activeAxes={[true, true, true]} 
-          disableRotations={false}           
-          disableAxes={false}               
-          disableSliders={false}           
-          scale={decal.scale[0] * 1.5}     
-          lineWidth={2}                  
-          fixed={false}                    
-          depthTest={false}                
-          anchor={[0, 0, 0]}               
-          onDrag={(l, deltaL, w, deltaW) => {
-            const position = new THREE.Vector3();
-            const quaternion = new THREE.Quaternion();
-            const scale = new THREE.Vector3();
-            w.decompose(position, quaternion, scale);
-            
-            // Extract euler from quaternion for rotation updates
-            const euler = new THREE.Euler().setFromQuaternion(quaternion);
-            
-            onUpdate(decal.id, { 
-                position: [position.x, position.y, position.z],
-                rotation: [euler.x, euler.y, euler.z],
-                scale: [scale.x, scale.y, scale.z]
-            });
-          }}
-        >
-          {selectionBorder}
-          {decalElement}
-        </PivotControls>
-      </group>
-    );
-  }
-
-  return (
-    <>
-      {selectionBorder}
-      {decalElement}
-    </>
+    </group>
   );
 };
 
@@ -298,7 +198,7 @@ export const Viewport: React.FC<ViewportProps> = ({
 }) => {
   const [loadedScene, setLoadedScene] = useState<THREE.Group | null>(null);
   const [resetKey, setResetKey] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
+  const [isPointerDown, setIsPointerDown] = useState(false);
   const containerRef = useRef<THREE.Group>(null);
   const controlsRef = useRef<any>(null);
   const { scene: modelGroup } = useGLTF(modelUrl || '');
@@ -330,6 +230,35 @@ export const Viewport: React.FC<ViewportProps> = ({
     if (containerRef.current && onSceneReady) onSceneReady(containerRef.current);
   }, [loadedScene, decals, onSceneReady]);
 
+  const handlePointerDown = (e: any) => {
+    if (isReviewMode || isCapturing) return;
+    if (toolMode === ToolMode.SELECT && selectedId) {
+        setIsPointerDown(true);
+    }
+  };
+
+  const handlePointerMove = (e: any) => {
+    if (!isPointerDown || !selectedId || isReviewMode || isCapturing) return;
+    const mesh = e.object as THREE.Mesh;
+    if (!mesh || !mesh.isMesh) return;
+    mesh.updateMatrixWorld();
+    const localPoint = mesh.worldToLocal(e.point.clone());
+    const worldNormal = e.face.normal.clone().applyMatrix4(new THREE.Matrix4().extractRotation(mesh.matrixWorld));
+    const localNormal = worldNormal.clone().applyQuaternion(mesh.quaternion.clone().invert());
+    const helper = new THREE.Object3D();
+    helper.position.copy(localPoint);
+    helper.lookAt(localPoint.clone().add(localNormal));
+    onUpdateDecal(selectedId, {
+      position: [localPoint.x, localPoint.y, localPoint.z],
+      rotation: [helper.rotation.x, helper.rotation.y, helper.rotation.z],
+      meshName: mesh.name || mesh.uuid
+    });
+  };
+
+  const handlePointerUp = () => {
+    setIsPointerDown(false);
+  };
+
   const handleResetView = () => setResetKey(p => p + 1);
 
   const handleZoom = (direction: 'in' | 'out') => {
@@ -358,20 +287,27 @@ export const Viewport: React.FC<ViewportProps> = ({
           <ambientLight intensity={0.5} />
           <spotLight position={[50, 50, 50]} angle={0.15} penumbra={1} intensity={2} castShadow />
           <AutoFraming scene={loadedScene} resetKey={resetKey} />
+          
           <group 
             ref={containerRef}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerUp}
             onClick={(e) => {
-              if (toolMode === ToolMode.SELECT || isReviewMode || isCapturing) return;
+              if (isReviewMode || isCapturing) return;
               e.stopPropagation();
               const mesh = e.object as THREE.Mesh;
-              mesh.updateMatrixWorld();
-              const localPoint = mesh.worldToLocal(e.point.clone());
-              const worldNormal = e.face!.normal.clone().applyMatrix4(new THREE.Matrix4().extractRotation(mesh.matrixWorld));
-              const localNormal = worldNormal.clone().applyQuaternion(mesh.quaternion.clone().invert());
-              const helper = new THREE.Object3D();
-              helper.position.copy(localPoint);
-              helper.lookAt(localPoint.clone().add(localNormal));
-              onModelClick([localPoint.x, localPoint.y, localPoint.z], [helper.rotation.x, helper.rotation.y, helper.rotation.z], mesh);
+              if (toolMode !== ToolMode.SELECT) {
+                mesh.updateMatrixWorld();
+                const localPoint = mesh.worldToLocal(e.point.clone());
+                const worldNormal = e.face!.normal.clone().applyMatrix4(new THREE.Matrix4().extractRotation(mesh.matrixWorld));
+                const localNormal = worldNormal.clone().applyQuaternion(mesh.quaternion.clone().invert());
+                const helper = new THREE.Object3D();
+                helper.position.copy(localPoint);
+                helper.lookAt(localPoint.clone().add(localNormal));
+                onModelClick([localPoint.x, localPoint.y, localPoint.z], [helper.rotation.x, helper.rotation.y, helper.rotation.z], mesh);
+              }
             }}
           >
             {loadedScene && <primitive object={loadedScene} />}
@@ -382,11 +318,8 @@ export const Viewport: React.FC<ViewportProps> = ({
                     isSelected={decal.id === selectedId && !isReviewMode && !isCapturing} 
                     onSelect={onSelectDecal} 
                     scene={loadedScene} 
-                    onDragStart={() => setIsDragging(true)}
-                    toolMode={toolMode}
                     isReviewMode={isReviewMode}
                     isCapturing={isCapturing}
-                    onUpdate={onUpdateDecal}
                 />
                 {decal.mirror && (
                     <DecalItem 
@@ -395,29 +328,27 @@ export const Viewport: React.FC<ViewportProps> = ({
                         isSelected={false} 
                         onSelect={() => {}} 
                         scene={loadedScene} 
-                        onDragStart={() => {}}
-                        toolMode={toolMode}
                         isReviewMode={isReviewMode}
                         isCapturing={isCapturing}
-                        onUpdate={onUpdateDecal}
                     />
                 )}
               </React.Fragment>
             ))}
           </group>
+
           <ContactShadows position={[0, -0.01, 0]} opacity={0.6} scale={40} blur={2.5} far={10} />
           {gridVisible && !isCapturing && (
             <Grid sectionSize={1} sectionThickness={1} sectionColor="#3b82f6" args={[100, 100]} cellColor="#1a1a1a" fadeDistance={50} infiniteGrid position={[0, 0, 0]} />
           )}
+          
           <OrbitControls 
             ref={controlsRef} 
             makeDefault 
             enableDamping 
             dampingFactor={0.07} 
             autoRotate={isRotating}
-            enableRotate={!isDragging}
-            enablePan={!isDragging}
-            enableZoom={!isDragging}
+            enableRotate={!isPointerDown}
+            enablePan={!isPointerDown}
           />
         </Suspense>
       </Canvas>

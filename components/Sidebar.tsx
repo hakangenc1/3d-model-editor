@@ -12,7 +12,7 @@ interface SidebarProps {
 }
 
 const COLOR_PRESETS = [
-  '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899', '#ffffff', '#000000', '#71717a'
+  '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#ec4899', '#ffffff', '#000000', '#71717a', '#a1a1aa'
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({ 
@@ -57,8 +57,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
 
               <div className="space-y-4">
-                <div className="space-y-3 p-4 rounded-xl bg-[#0c0c0e] border border-[#222]">
-                  <label className="text-[9px] font-bold text-zinc-600 uppercase tracking-[0.2em] block">Source</label>
+                <div className="space-y-4 p-4 rounded-2xl bg-[#0c0c0e] border border-[#222]">
+                  <label className="text-[9px] font-black text-zinc-500 uppercase tracking-[0.2em] block">Properties</label>
                   {selectedDecal.type === 'logo' ? (
                     <div className="space-y-3">
                       <div className="aspect-square w-16 sm:w-20 mx-auto rounded-lg bg-[#161618] border border-[#222] p-3 flex items-center justify-center overflow-hidden">
@@ -69,40 +69,47 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         className="w-full py-2 bg-primary text-white rounded-lg text-[10px] font-bold uppercase hover:bg-primary/90 transition-all shadow-lg flex items-center justify-center gap-2"
                       >
                         <span className="material-symbols-outlined text-sm">sync</span>
-                        <span className="hidden sm:inline">Change</span>
+                        <span>Change Asset</span>
                       </button>
                     </div>
                   ) : (
-                    <div className="space-y-3">
-                      <input 
-                        value={selectedDecal.content}
-                        onChange={(e) => onUpdateDecal(selectedDecal.id, { content: e.target.value })}
-                        className="w-full bg-[#161618] border border-[#222] rounded-md px-3 py-2 text-sm text-zinc-100 outline-none focus:border-primary transition-colors font-mono"
-                        placeholder="Enter text..."
-                      />
+                    <div className="space-y-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest">Input Text</label>
+                        <input 
+                          value={selectedDecal.content}
+                          onChange={(e) => onUpdateDecal(selectedDecal.id, { content: e.target.value })}
+                          className="w-full bg-[#161618] border border-[#222] rounded-lg px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-primary focus:bg-[#1f1f22] transition-all font-sans font-medium"
+                          placeholder="Enter text..."
+                        />
+                      </div>
                       
-                      <div className="space-y-2 pt-2">
-                        <label className="text-[9px] font-bold text-zinc-600 uppercase tracking-[0.2em] block">Appearance</label>
-                        <div className="grid grid-cols-5 gap-2">
+                      <div className="space-y-3 pt-2">
+                        <div className="flex items-center justify-between">
+                            <label className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest">Premium Palette</label>
+                            <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 font-black">CURATED</span>
+                        </div>
+                        <div className="grid grid-cols-6 gap-2 p-2 bg-[#161618] rounded-xl border border-white/5 shadow-inner">
                           {COLOR_PRESETS.map(color => (
                             <button
                               key={color}
                               onClick={() => onUpdateDecal(selectedDecal.id, { color })}
-                              className={`size-6 rounded-full border-2 transition-transform hover:scale-110 ${selectedDecal.color === color ? 'border-white' : 'border-transparent'}`}
+                              className={`aspect-square rounded-md border-2 transition-all hover:scale-110 active:scale-95 ${selectedDecal.color === color ? 'border-primary ring-2 ring-primary/20' : 'border-transparent'}`}
                               style={{ backgroundColor: color }}
                             />
                           ))}
-                          <div className="relative size-6">
+                          <div className="relative aspect-square">
                             <input 
                               type="color" 
                               value={selectedDecal.color || '#3b82f6'}
                               onChange={(e) => onUpdateDecal(selectedDecal.id, { color: e.target.value })}
-                              className="absolute inset-0 size-full opacity-0 cursor-pointer"
+                              className="absolute inset-0 size-full opacity-0 cursor-pointer z-10"
                             />
                             <div 
-                              className="size-full rounded-full border-2 border-white/20 bg-gradient-to-tr from-red-500 via-green-500 to-blue-500"
-                              title="Custom Color"
-                            />
+                              className={`size-full rounded-md border-2 flex items-center justify-center bg-gradient-to-br from-red-500 via-green-500 to-blue-500 shadow-lg ${!COLOR_PRESETS.includes(selectedDecal.color || '') ? 'border-white' : 'border-transparent opacity-60'}`}
+                            >
+                                <span className="material-symbols-outlined text-white text-xs">colorize</span>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -110,10 +117,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   )}
                 </div>
 
-                <div className="space-y-5">
+                <div className="space-y-5 px-1">
                   <div className="space-y-2">
                     <div className="flex justify-between text-[10px] font-bold text-zinc-500 uppercase">
-                      <span>Scale</span>
+                      <span>Dimensions</span>
                       <span className="text-primary font-mono">{((selectedDecal.scale[0] / state.modelScale) * 100).toFixed(0)}%</span>
                     </div>
                     <input 
@@ -129,7 +136,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                   <div className="space-y-2">
                     <div className="flex justify-between text-[10px] font-bold text-zinc-500 uppercase">
-                      <span>Rotate</span>
+                      <span>Rotation</span>
                       <span className="text-primary font-mono">{Math.round((selectedDecal.rotation[2] * 180) / Math.PI)}°</span>
                     </div>
                     <input 
@@ -142,11 +149,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
 
                 <div className="pt-4 border-t border-[#222] space-y-4">
-                   <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest block">Visibility & Mirror</label>
+                   <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest block">Finishing & Logic</label>
                    
                    <div className="space-y-2">
                       <div className="flex justify-between text-[10px] font-bold text-zinc-500 uppercase">
-                        <span>Opacity</span>
+                        <span>Transparency</span>
                         <span className="text-primary font-mono">{Math.round((selectedDecal.opacity || 1) * 100)}%</span>
                       </div>
                       <input 
@@ -159,10 +166,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                    <button 
                     onClick={() => onUpdateDecal(selectedDecal.id, { mirror: !selectedDecal.mirror })}
-                    className={`w-full py-2 rounded-lg text-[10px] font-bold uppercase border transition-all flex items-center justify-center gap-2 ${selectedDecal.mirror ? 'bg-primary/20 border-primary text-primary' : 'bg-[#0c0c0e] border-[#222] text-zinc-500'}`}
+                    className={`w-full py-2.5 rounded-xl text-[10px] font-bold uppercase border transition-all flex items-center justify-center gap-2 ${selectedDecal.mirror ? 'bg-primary text-white border-primary shadow-[0_0_20px_rgba(59,130,246,0.25)]' : 'bg-[#0c0c0e] border-[#222] text-zinc-500 hover:border-zinc-400'}`}
                    >
-                     <span className="material-symbols-outlined text-sm">content_copy</span>
-                     Symmetry Mirror {selectedDecal.mirror ? 'ON' : 'OFF'}
+                     <span className="material-symbols-outlined text-sm">{selectedDecal.mirror ? 'check_circle' : 'content_copy'}</span>
+                     Symmetry Mirroring {selectedDecal.mirror ? 'ENABLED' : 'OFF'}
                    </button>
                 </div>
               </div>
@@ -170,7 +177,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-40">
               <span className="material-symbols-outlined text-4xl sm:text-5xl text-zinc-700">select_all</span>
-              <p className="text-[9px] sm:text-[10px] text-zinc-600 px-4 leading-relaxed font-bold uppercase tracking-widest">Select an element</p>
+              <p className="text-[9px] sm:text-[10px] text-zinc-600 px-4 leading-relaxed font-bold uppercase tracking-widest">Select a design element<br/>on the model to modify</p>
             </div>
           )}
         </div>
@@ -179,7 +186,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* STACK PANEL */}
       <div className="h-48 sm:h-60 bg-[#121214]/95 backdrop-blur-2xl border border-[#222] rounded-3xl shadow-2xl flex flex-col overflow-hidden pointer-events-auto">
         <div className="px-5 py-3 border-b border-[#222] flex items-center justify-between bg-[#161618]">
-          <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest font-mono hidden sm:inline">Stack</span>
+          <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest font-mono hidden sm:inline">Stack Layers</span>
           <span className="material-symbols-outlined text-zinc-500 text-lg sm:hidden">layers</span>
           <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[9px] font-black border border-primary/20">{state.decals.length}</span>
         </div>
