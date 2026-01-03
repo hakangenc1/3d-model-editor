@@ -1,7 +1,6 @@
-
 import React, { Suspense, useMemo, useState, useEffect, useRef } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
-import { OrbitControls, useGLTF, Decal, Environment, ContactShadows, Grid, PivotControls } from '@react-three/drei';
+import { OrbitControls, useGLTF, Decal, Environment, ContactShadows, Grid, PivotControls, Edges } from '@react-three/drei';
 import * as THREE from 'three';
 import { DecalData, ToolMode } from '../types';
 
@@ -80,7 +79,7 @@ const DecalItem: React.FC<{
   // Pulsing animation for selection border
   useFrame(({ clock }) => {
     if (borderMaterialRef.current) {
-      borderMaterialRef.current.opacity = 0.5 + Math.sin(clock.elapsedTime * 8) * 0.3;
+      borderMaterialRef.current.opacity = 0.4 + Math.sin(clock.elapsedTime * 8) * 0.2;
     }
   });
 
@@ -97,6 +96,10 @@ const DecalItem: React.FC<{
     return found;
   }, [scene, decal.meshName]);
 
+  // Fix: Decal component from @react-three/drei expects a RefObject for its mesh prop.
+  // We wrap targetMesh in a ref-like object to satisfy the expected type.
+  const targetMeshRef = useMemo(() => ({ current: targetMesh }), [targetMesh]);
+
   // High-visibility selection border texture generator
   const selectionTexture = useMemo(() => {
     const canvas = document.createElement('canvas');
@@ -104,32 +107,23 @@ const DecalItem: React.FC<{
     canvas.height = 1024;
     const ctx = canvas.getContext('2d');
     if (ctx) {
-      // Background outline (glow-ish)
       ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 40;
-      ctx.strokeRect(20, 20, 984, 984);
-
-      // Primary dotted line
+      ctx.lineWidth = 60;
+      ctx.strokeRect(40, 40, 944, 944);
       ctx.strokeStyle = '#3b82f6';
-      ctx.lineWidth = 30;
+      ctx.lineWidth = 40;
       ctx.setLineDash([80, 40]);
-      ctx.strokeRect(20, 20, 984, 984);
-      
-      // Thick corner markers for "resize handle" feel
+      ctx.strokeRect(40, 40, 944, 944);
       ctx.fillStyle = '#3b82f6';
-      const markerSize = 120;
-      // Top Left
-      ctx.fillRect(0, 0, markerSize, 30);
-      ctx.fillRect(0, 0, 30, markerSize);
-      // Top Right
-      ctx.fillRect(1024 - markerSize, 0, markerSize, 30);
-      ctx.fillRect(1024 - 30, 0, 30, markerSize);
-      // Bottom Left
-      ctx.fillRect(0, 1024 - 30, markerSize, 30);
-      ctx.fillRect(0, 1024 - markerSize, 30, markerSize);
-      // Bottom Right
-      ctx.fillRect(1024 - markerSize, 1024 - 30, markerSize, 30);
-      ctx.fillRect(1024 - 30, 1024 - markerSize, 30, markerSize);
+      const markerSize = 200;
+      ctx.fillRect(0, 0, markerSize, 40);
+      ctx.fillRect(0, 0, 40, markerSize);
+      ctx.fillRect(1024 - markerSize, 0, markerSize, 40);
+      ctx.fillRect(1024 - 40, 0, 40, markerSize);
+      ctx.fillRect(0, 1024 - 40, markerSize, 40);
+      ctx.fillRect(0, 1024 - markerSize, 40, markerSize);
+      ctx.fillRect(1024 - markerSize, 1024 - 40, markerSize, 40);
+      ctx.fillRect(1024 - 40, 1024 - markerSize, 40, markerSize);
     }
     const t = new THREE.CanvasTexture(canvas);
     t.colorSpace = THREE.SRGBColorSpace;
@@ -146,7 +140,6 @@ const DecalItem: React.FC<{
 
     const render = async () => {
       ctx.clearRect(0, 0, 1024, 1024);
-      
       if (decal.type === 'logo') {
         const img = new Image();
         img.crossOrigin = "anonymous";
@@ -155,9 +148,7 @@ const DecalItem: React.FC<{
           img.onload = resolve;
           img.onerror = resolve;
         });
-
         if (!isMounted) return;
-
         if (isMirror) {
           ctx.save();
           ctx.translate(1024, 0);
@@ -168,51 +159,38 @@ const DecalItem: React.FC<{
       } else {
         try {
           await document.fonts.load('900 180px "Plus Jakarta Sans"');
-        } catch (e) {
-          console.warn("Font loading failed, falling back.");
-        }
-        
+        } catch (e) {}
         if (!isMounted) return;
-
         ctx.fillStyle = decal.color || '#3b82f6';
         ctx.font = '900 180px sans-serif'; 
-        if (document.fonts.check('900 180px "Plus Jakarta Sans"')) {
-          ctx.font = '900 180px "Plus Jakarta Sans"';
-        }
-        
+        if (document.fonts.check('900 180px "Plus Jakarta Sans"')) ctx.font = '900 180px "Plus Jakarta Sans"';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        
         if (isMirror) {
-          ctx.save();
-          ctx.translate(512, 512);
-          ctx.scale(-1, 1);
-          ctx.translate(-512, -512);
+          ctx.save(); ctx.translate(512, 512); ctx.scale(-1, 1); ctx.translate(-512, -512);
         }
         ctx.fillText(decal.content, 512, 512);
         if (isMirror) ctx.restore();
       }
-
       const t = new THREE.CanvasTexture(canvas);
       t.colorSpace = THREE.SRGBColorSpace;
       t.anisotropy = 16;
       t.needsUpdate = true;
       if (isMounted) setTexture(t);
     };
-
     render();
     return () => { isMounted = false; };
   }, [decal.content, decal.color, decal.type, isMirror]);
 
   if (!targetMesh || !texture || !decal.visible) return null;
 
-  const depth = decal.scale[0] * 0.25; 
+  const depth = decal.scale[0] * 0.8; 
   const finalPos = isMirror ? [ -decal.position[0], decal.position[1], decal.position[2] ] : decal.position;
   const finalRot = isMirror ? [ decal.rotation[0], -decal.rotation[1], -decal.rotation[2] ] : decal.rotation;
 
   const decalElement = (
     <Decal
-      mesh={{ current: targetMesh } as any}
+      mesh={targetMeshRef as any}
       position={finalPos as any}
       rotation={finalRot as any}
       scale={[decal.scale[0], decal.scale[1], depth]} 
@@ -220,12 +198,6 @@ const DecalItem: React.FC<{
         if (isReviewMode || isCapturing) return;
         e.stopPropagation();
         onSelect(decal.id);
-      }}
-      onPointerDown={(e) => {
-        if (toolMode === ToolMode.SELECT && isSelected && !isMirror && !isReviewMode && !isCapturing) {
-           e.stopPropagation();
-           onDragStart(e);
-        }
       }}
     >
       <meshStandardMaterial
@@ -236,46 +208,55 @@ const DecalItem: React.FC<{
         metalness={decal.metalness ?? 0}
         alphaTest={0.01}
         polygonOffset={true}
-        polygonOffsetFactor={-15} 
+        polygonOffsetFactor={-10} 
         polygonOffsetUnits={-1}
         depthWrite={true}
-        side={THREE.FrontSide}
+        side={THREE.DoubleSide}
       />
     </Decal>
   );
 
   const selectionBorder = isSelected && !isMirror && !isReviewMode && !isCapturing && (
-    <Decal
-      mesh={{ current: targetMesh } as any}
-      position={finalPos as any}
-      rotation={finalRot as any}
-      // Slightly larger than the actual decal so the border is visible around it
-      scale={[decal.scale[0] * 1.04, decal.scale[1] * 1.04, depth * 1.01]}
-    >
-      <meshBasicMaterial
-        ref={borderMaterialRef}
-        map={selectionTexture}
-        transparent={true}
-        opacity={0.8}
-        polygonOffset={true}
-        polygonOffsetFactor={-30} // Significant offset to ensure it stays on top of the decal
-        polygonOffsetUnits={-1}
-        depthWrite={false}
-        side={THREE.FrontSide}
-      />
-    </Decal>
+    <>
+      {/* Decal based projection border */}
+      <Decal
+        mesh={targetMeshRef as any}
+        position={finalPos as any}
+        rotation={finalRot as any}
+        scale={[decal.scale[0] * 1.1, decal.scale[1] * 1.1, depth * 1.05]}
+      >
+        <meshBasicMaterial
+          ref={borderMaterialRef}
+          map={selectionTexture}
+          transparent={true}
+          opacity={0.8}
+          polygonOffset={true}
+          polygonOffsetFactor={-40} 
+          polygonOffsetUnits={-1}
+          depthWrite={false}
+          side={THREE.FrontSide}
+        />
+      </Decal>
+      {/* 3D Box Wireframe for unmistakable selection visibility */}
+      <group position={finalPos as any} rotation={finalRot as any}>
+         <mesh scale={[decal.scale[0], decal.scale[1], 0.05]}>
+            <boxGeometry />
+            <meshBasicMaterial transparent opacity={0} />
+            <Edges color="#3b82f6" lineWidth={2} />
+         </mesh>
+      </group>
+    </>
   );
 
-  // Refined resizing UI: PivotControls configured to be minimal and corner-focused
   if (isSelected && !isMirror && !isReviewMode && !isCapturing) {
     return (
       <group>
         <PivotControls
-          activeAxes={[false, false, false]} 
-          disableRotations={true}           
-          disableAxes={true}               
+          activeAxes={[true, true, true]} 
+          disableRotations={false}           
+          disableAxes={false}               
           disableSliders={false}           
-          scale={decal.scale[0] * 1.2}     
+          scale={decal.scale[0] * 1.5}     
           lineWidth={2}                  
           fixed={false}                    
           depthTest={false}                
@@ -285,10 +266,15 @@ const DecalItem: React.FC<{
             const quaternion = new THREE.Quaternion();
             const scale = new THREE.Vector3();
             w.decompose(position, quaternion, scale);
-            const newScale = Math.max(scale.x, scale.y);
-            if (Math.abs(newScale - decal.scale[0]) > 0.001) {
-                onUpdate(decal.id, { scale: [newScale, newScale, newScale] });
-            }
+            
+            // Extract euler from quaternion for rotation updates
+            const euler = new THREE.Euler().setFromQuaternion(quaternion);
+            
+            onUpdate(decal.id, { 
+                position: [position.x, position.y, position.z],
+                rotation: [euler.x, euler.y, euler.z],
+                scale: [scale.x, scale.y, scale.z]
+            });
           }}
         >
           {selectionBorder}
@@ -322,7 +308,6 @@ export const Viewport: React.FC<ViewportProps> = ({
       const box = new THREE.Box3().setFromObject(modelGroup);
       const minY = box.min.y;
       modelGroup.position.y -= minY;
-
       modelGroup.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const m = child as THREE.Mesh;
@@ -342,27 +327,8 @@ export const Viewport: React.FC<ViewportProps> = ({
   }, [modelGroup, wireframeMode]);
 
   useEffect(() => {
-    if (containerRef.current && onSceneReady) {
-      onSceneReady(containerRef.current);
-    }
+    if (containerRef.current && onSceneReady) onSceneReady(containerRef.current);
   }, [loadedScene, decals, onSceneReady]);
-
-  const updatePosition = (e: any) => {
-    if (!selectedId || !e.face || !e.object || isReviewMode || isCapturing) return;
-    const mesh = e.object as THREE.Mesh;
-    mesh.updateMatrixWorld();
-    const localPoint = mesh.worldToLocal(e.point.clone());
-    const worldNormal = e.face.normal.clone().applyMatrix4(new THREE.Matrix4().extractRotation(mesh.matrixWorld));
-    const localNormal = worldNormal.clone().applyQuaternion(mesh.quaternion.clone().invert());
-    const helper = new THREE.Object3D();
-    helper.position.copy(localPoint);
-    helper.lookAt(localPoint.clone().add(localNormal));
-    onUpdateDecal(selectedId, {
-      position: [localPoint.x, localPoint.y, localPoint.z],
-      rotation: [helper.rotation.x, helper.rotation.y, helper.rotation.z],
-      meshName: mesh.name || mesh.uuid
-    });
-  };
 
   const handleResetView = () => setResetKey(p => p + 1);
 
@@ -374,8 +340,6 @@ export const Viewport: React.FC<ViewportProps> = ({
     const directionVec = new THREE.Vector3().subVectors(camera.position, target);
     const zoomFactor = direction === 'in' ? 0.8 : 1.25;
     directionVec.multiplyScalar(zoomFactor);
-    if (directionVec.length() < 0.1 && direction === 'in') return;
-    if (directionVec.length() > 5000 && direction === 'out') return;
     camera.position.copy(target).add(directionVec);
     controls.update();
   };
@@ -393,12 +357,7 @@ export const Viewport: React.FC<ViewportProps> = ({
           <Environment preset={environment} />
           <ambientLight intensity={0.5} />
           <spotLight position={[50, 50, 50]} angle={0.15} penumbra={1} intensity={2} castShadow />
-          
-          <AutoFraming 
-            scene={loadedScene} 
-            resetKey={resetKey} 
-          />
-
+          <AutoFraming scene={loadedScene} resetKey={resetKey} />
           <group 
             ref={containerRef}
             onClick={(e) => {
@@ -414,13 +373,6 @@ export const Viewport: React.FC<ViewportProps> = ({
               helper.lookAt(localPoint.clone().add(localNormal));
               onModelClick([localPoint.x, localPoint.y, localPoint.z], [helper.rotation.x, helper.rotation.y, helper.rotation.z], mesh);
             }}
-            onPointerMove={(e) => { 
-                if (isDragging && selectedId && !isReviewMode && !isCapturing) {
-                    updatePosition(e);
-                }
-            }}
-            onPointerUp={() => setIsDragging(false)}
-            onPointerLeave={() => setIsDragging(false)}
           >
             {loadedScene && <primitive object={loadedScene} />}
             {loadedScene && decals.map((decal) => (
@@ -454,27 +406,15 @@ export const Viewport: React.FC<ViewportProps> = ({
             ))}
           </group>
           <ContactShadows position={[0, -0.01, 0]} opacity={0.6} scale={40} blur={2.5} far={10} />
-          
           {gridVisible && !isCapturing && (
-            <Grid 
-              sectionSize={1} 
-              sectionThickness={1} 
-              sectionColor="#3b82f6" 
-              args={[100, 100]} 
-              cellColor="#1a1a1a" 
-              fadeDistance={50} 
-              infiniteGrid 
-              position={[0, 0, 0]} 
-            />
+            <Grid sectionSize={1} sectionThickness={1} sectionColor="#3b82f6" args={[100, 100]} cellColor="#1a1a1a" fadeDistance={50} infiniteGrid position={[0, 0, 0]} />
           )}
-
           <OrbitControls 
             ref={controlsRef} 
             makeDefault 
             enableDamping 
             dampingFactor={0.07} 
             autoRotate={isRotating}
-            autoRotateSpeed={2}
             enableRotate={!isDragging}
             enablePan={!isDragging}
             enableZoom={!isDragging}
@@ -485,87 +425,32 @@ export const Viewport: React.FC<ViewportProps> = ({
       {!isReviewMode && !isCapturing && (
         <>
           <div className="absolute top-4 sm:top-1/2 sm:-translate-y-1/2 left-3 sm:left-8 flex flex-row sm:flex-col gap-2 sm:gap-4 p-2 sm:p-3 bg-[#0a0a0c]/85 backdrop-blur-3xl rounded-full sm:rounded-[2rem] border border-white/5 shadow-2xl z-50 pointer-events-auto transition-all">
-            <button
-              onClick={() => onSetToolMode(ToolMode.SELECT)}
-              className={`size-10 sm:size-16 flex flex-col items-center justify-center rounded-full sm:rounded-2xl transition-all ${toolMode === ToolMode.SELECT ? 'bg-primary text-white shadow-lg shadow-primary/40' : 'text-zinc-500 hover:bg-white/5 hover:text-white'}`}
-              title="Select"
-            >
+            <button onClick={() => onSetToolMode(ToolMode.SELECT)} className={`size-10 sm:size-16 flex flex-col items-center justify-center rounded-full sm:rounded-2xl transition-all ${toolMode === ToolMode.SELECT ? 'bg-primary text-white shadow-lg shadow-primary/40' : 'text-zinc-500 hover:bg-white/5 hover:text-white'}`}>
               <span className="material-symbols-outlined text-[20px] sm:text-[32px]">near_me</span>
               <span className="text-[7px] sm:text-[8px] font-black uppercase mt-1 font-mono hidden sm:inline">Pick</span>
             </button>
-
-            <button
-              onClick={() => onSetToolMode(ToolMode.PLACE_TEXT)}
-              className={`size-10 sm:size-16 flex flex-col items-center justify-center rounded-full sm:rounded-2xl transition-all ${toolMode === ToolMode.PLACE_TEXT ? 'bg-primary text-white shadow-lg shadow-primary/40' : 'text-zinc-500 hover:bg-white/5 hover:text-white'}`}
-              title="Text"
-            >
+            <button onClick={() => onSetToolMode(ToolMode.PLACE_TEXT)} className={`size-10 sm:size-16 flex flex-col items-center justify-center rounded-full sm:rounded-2xl transition-all ${toolMode === ToolMode.PLACE_TEXT ? 'bg-primary text-white shadow-lg shadow-primary/40' : 'text-zinc-500 hover:bg-white/5 hover:text-white'}`}>
               <span className="material-symbols-outlined text-[20px] sm:text-[32px]">title</span>
               <span className="text-[7px] sm:text-[8px] font-black uppercase mt-1 font-mono hidden sm:inline">Text</span>
             </button>
-
-            <button
-              onClick={() => { onAssetUpload(); }}
-              className={`size-10 sm:size-16 flex flex-col items-center justify-center rounded-full sm:rounded-2xl transition-all ${toolMode === ToolMode.PLACE_LOGO ? 'bg-primary text-white shadow-lg shadow-primary/40' : 'text-zinc-500 hover:bg-white/5 hover:text-white'}`}
-              title="Asset"
-            >
+            <button onClick={() => { onAssetUpload(); }} className={`size-10 sm:size-16 flex flex-col items-center justify-center rounded-full sm:rounded-2xl transition-all ${toolMode === ToolMode.PLACE_LOGO ? 'bg-primary text-white shadow-lg shadow-primary/40' : 'text-zinc-500 hover:bg-white/5 hover:text-white'}`}>
               <span className="material-symbols-outlined text-[20px] sm:text-[32px]">add_photo_alternate</span>
               <span className="text-[7px] sm:text-[8px] font-black uppercase mt-1 font-mono hidden sm:inline">Asset</span>
             </button>
           </div>
-
           <div className="absolute bottom-6 sm:bottom-10 left-1/2 -translate-x-1/2 flex items-center gap-1 sm:gap-4 px-4 sm:px-6 py-1.5 sm:py-2 bg-[#0a0a0c]/90 backdrop-blur-2xl border border-white/10 rounded-full shadow-[0_30px_60px_rgba(0,0,0,0.9)] z-50 pointer-events-auto transition-all pb-[env(safe-area-inset-bottom)] sm:pb-2">
             <div className="flex items-center gap-1 sm:gap-2">
-              <button 
-                onClick={onToggleGrid}
-                className={`p-2 sm:p-3 rounded-full transition-all flex items-center justify-center ${gridVisible ? 'bg-primary/20 text-primary' : 'text-zinc-600 hover:text-white'}`}
-                title="Grid"
-              >
-                <span className="material-symbols-outlined text-xl sm:text-2xl">grid_on</span>
-              </button>
-              <button 
-                onClick={onToggleRotation}
-                className={`p-2 sm:p-3 rounded-full transition-all flex items-center justify-center ${isRotating ? 'bg-primary/20 text-primary animate-spin-slow' : 'text-zinc-600 hover:text-white'}`}
-                title="Rotate"
-              >
-                <span className="material-symbols-outlined text-xl sm:text-2xl">sync</span>
-              </button>
-              <button 
-                onClick={onToggleWireframe}
-                className={`p-2 sm:p-3 rounded-full transition-all flex items-center justify-center ${wireframeMode ? 'bg-primary/20 text-primary' : 'text-zinc-600 hover:text-white'}`}
-                title="Skeleton"
-              >
-                <span className="material-symbols-outlined text-xl sm:text-2xl">texture</span>
-              </button>
+              <button onClick={onToggleGrid} className={`p-2 sm:p-3 rounded-full transition-all flex items-center justify-center ${gridVisible ? 'bg-primary/20 text-primary' : 'text-zinc-600 hover:text-white'}`}><span className="material-symbols-outlined text-xl sm:text-2xl">grid_on</span></button>
+              <button onClick={onToggleRotation} className={`p-2 sm:p-3 rounded-full transition-all flex items-center justify-center ${isRotating ? 'bg-primary/20 text-primary animate-spin-slow' : 'text-zinc-600 hover:text-white'}`}><span className="material-symbols-outlined text-xl sm:text-2xl">sync</span></button>
+              <button onClick={onToggleWireframe} className={`p-2 sm:p-3 rounded-full transition-all flex items-center justify-center ${wireframeMode ? 'bg-primary/20 text-primary' : 'text-zinc-600 hover:text-white'}`}><span className="material-symbols-outlined text-xl sm:text-2xl">texture</span></button>
             </div>
-            
             <div className="w-px h-6 bg-white/10 mx-1 sm:mx-2" />
-
             <div className="flex items-center gap-1 sm:gap-2">
-              <button 
-                onClick={() => handleZoom('in')}
-                className="p-2 sm:p-3 text-zinc-600 hover:text-white transition-all active:scale-90 flex items-center justify-center"
-                title="Zoom In"
-              >
-                <span className="material-symbols-outlined text-xl sm:text-2xl">zoom_in</span>
-              </button>
-              <button 
-                onClick={() => handleZoom('out')}
-                className="p-2 sm:p-3 text-zinc-600 hover:text-white transition-all active:scale-90 flex items-center justify-center"
-                title="Zoom Out"
-              >
-                <span className="material-symbols-outlined text-xl sm:text-2xl">zoom_out</span>
-              </button>
+              <button onClick={() => handleZoom('in')} className="p-2 sm:p-3 text-zinc-600 hover:text-white transition-all active:scale-90 flex items-center justify-center"><span className="material-symbols-outlined text-xl sm:text-2xl">zoom_in</span></button>
+              <button onClick={() => handleZoom('out')} className="p-2 sm:p-3 text-zinc-600 hover:text-white transition-all active:scale-90 flex items-center justify-center"><span className="material-symbols-outlined text-xl sm:text-2xl">zoom_out</span></button>
             </div>
-
             <div className="w-px h-6 bg-white/10 mx-1 sm:mx-2" />
-
-            <button 
-              onClick={handleResetView}
-              className="p-2 sm:p-3 text-zinc-400 hover:text-white hover:bg-white/5 rounded-full transition-all flex items-center justify-center"
-              title="Reset"
-            >
-              <span className="material-symbols-outlined text-xl sm:text-2xl">center_focus_strong</span>
-            </button>
+            <button onClick={handleResetView} className="p-2 sm:p-3 text-zinc-400 hover:text-white hover:bg-white/5 rounded-full transition-all flex items-center justify-center"><span className="material-symbols-outlined text-xl sm:text-2xl">center_focus_strong</span></button>
           </div>
         </>
       )}
